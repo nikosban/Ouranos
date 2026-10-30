@@ -45,9 +45,10 @@ namespace Ouranos.Movement
                     float desiredHeading = ShipMovementState.DirectionToHeading(toTarget);
                     heading = Mathf.MoveTowardsAngle(state.Heading, desiredHeading, profile.TurnRate * deltaTime);
                     float headingError = Mathf.Abs(Mathf.DeltaAngle(heading, desiredHeading));
-                    desiredSpeed = Mathf.Min(profile.MaxSpeed,
-                        ArrivalSpeedCap(target.Value.RemainingDistance, profile),
-                        TurnSpeedCap(headingError, distance, profile),
+                    // Two-argument Mathf.Min only: the params overload allocates an array every call (Issue #7).
+                    desiredSpeed = Mathf.Min(Mathf.Min(Mathf.Min(profile.MaxSpeed,
+                        ArrivalSpeedCap(target.Value.RemainingDistance, profile)),
+                        TurnSpeedCap(headingError, distance, profile)),
                         speedCap);
                 }
             }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace Ouranos.Movement
@@ -10,6 +11,11 @@ namespace Ouranos.Movement
         [Min(1)] public int MaxRequestsPerFrame = 2;
 
         public static RouteRequestQueue Instance { get; private set; }
+
+        /// <summary>Requests waiting for a later frame's budget.</summary>
+        public int PendingCount => pending.Count;
+
+        static readonly ProfilerMarker RouteRequestMarker = new ProfilerMarker("Movement.RouteRequest");
 
         readonly Queue<RoutePlanner> pending = new Queue<RoutePlanner>();
         readonly HashSet<RoutePlanner> queued = new HashSet<RoutePlanner>();
@@ -34,7 +40,8 @@ namespace Ouranos.Movement
                 RoutePlanner planner = pending.Dequeue();
                 queued.Remove(planner);
                 if (planner != null)
-                    planner.ExecuteRequest();
+                    using (RouteRequestMarker.Auto())
+                        planner.ExecuteRequest();
             }
         }
     }
