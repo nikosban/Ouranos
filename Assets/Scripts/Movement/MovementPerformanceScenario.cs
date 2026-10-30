@@ -110,7 +110,7 @@ namespace Ouranos.Movement
         readonly List<CommandRecord> commands = new List<CommandRecord>();
 
         Series mainThread, mainThreadActive, waitForTarget, gcAlloc, fixedStep, steering, avoidance, motorPropose, guard, motorCommit, routeRequest,
-            physicsFixed, scriptsFixed, scenario;
+            physicsFixed, scriptsFixed, scenario, neighborQuery, neighborScan, sideClearance;
         Series[] series;
         bool recording;
 
@@ -416,7 +416,11 @@ namespace Ouranos.Movement
             physicsFixed = new Series("FixedUpdate.PhysicsFixedUpdate");
             scriptsFixed = new Series("FixedUpdate.ScriptRunBehaviourFixedUpdate");
             scenario = new Series("Perf.Scenario");
-            series = new[] { mainThread, mainThreadActive, waitForTarget, gcAlloc, fixedStep, steering, avoidance, motorPropose, guard, motorCommit, routeRequest, physicsFixed, scriptsFixed, scenario };
+            neighborQuery = new Series("Avoidance.NeighborQuery");
+            neighborScan = new Series("Avoidance.NeighborScan");
+            sideClearance = new Series("Avoidance.SideClearance");
+            series = new[] { mainThread, mainThreadActive, waitForTarget, gcAlloc, fixedStep, steering, avoidance, motorPropose, guard, motorCommit, routeRequest, physicsFixed, scriptsFixed, scenario,
+                neighborQuery, neighborScan, sideClearance };
 
             var handles = new List<ProfilerRecorderHandle>();
             ProfilerRecorderHandle.GetAvailable(handles);
@@ -541,6 +545,12 @@ namespace Ouranos.Movement
             foreach (Series s in new[] { steering, avoidance, motorPropose, guard, motorCommit })
                 AppendSeries(text, $"  {s.Name} (step frames)", s, stepFrames, 1e-6, "ms", share: fixedStep);
             AppendExclusive(text, stepFrames);
+            foreach (Series s in new[] { neighborQuery, neighborScan, sideClearance })
+            {
+                AppendSeries(text, $"    {s.Name} (step frames)", s, stepFrames, 1e-6, "ms", share: avoidance);
+                AppendCalls(text, $"    {s.Name} calls", s, steady);
+            }
+            AppendAvoidanceExclusive(text, stepFrames);
             AppendSeries(text, "FixedUpdate.PhysicsFixedUpdate (step frames)", physicsFixed, stepFrames, 1e-6, "ms");
             AppendSeries(text, "FixedUpdate.ScriptRunBehaviourFixedUpdate (step frames)", scriptsFixed, stepFrames, 1e-6, "ms");
             AppendSeries(text, "Perf.Scenario (benchmark overhead, step frames)", scenario, stepFrames, 1e-6, "ms");
@@ -619,6 +629,39 @@ namespace Ouranos.Movement
                 values.Add(rest * 1e-6);
             }
             text.AppendLine($"  FixedStep exclusive (step frames): median {Percentile(values, 0.5):F4} ms p95 {Percentile(values, 0.95):F4} ms");
+        }
+
+        // Sample counts of one marker over the frames: calls per capture and per step frame.
+        void AppendCalls(StringBuilder text, string label, Series s, List<int> frameSet)
+        {
+            if (!s.Valid) return;
+            long calls = 0;
+            int stepFrames = 0;
+            foreach (int f in frameSet)
+            {
+                calls += s.Counts[f];
+                if (frameOwnSteps[f] > 0) stepFrames++;
+            }
+            text.AppendLine($"{label}: {calls} over {frameSet.Count} steady frames, {(stepFrames > 0 ? (double)calls / stepFrames : 0.0):F2} per step frame");
+        }
+
+        // Movement.Avoidance time not inside its three sibling submarkers (route direction, side application, readout).
+        void AppendAvoidanceExclusive(StringBuilder text, List<int> frameSet)
+        {
+            Series[] children = { neighborQuery, neighborScan, sideClearance };
+            if (!avoidance.Valid || System.Array.Exists(children, c => !c.Valid))
+            {
+                text.AppendLine("    Avoidance exclusive: unavailable");
+                return;
+            }
+            var values = new List<double>(frameSet.Count);
+            foreach (int f in frameSet)
+            {
+                long rest = avoidance.Values[f];
+                foreach (Series c in children) rest -= c.Values[f];
+                values.Add(rest * 1e-6);
+            }
+            text.AppendLine($"    Avoidance exclusive (step frames): median {Percentile(values, 0.5):F4} ms p95 {Percentile(values, 0.95):F4} ms");
         }
 
         void AppendBursts(StringBuilder text)

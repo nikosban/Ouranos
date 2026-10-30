@@ -1,3 +1,4 @@
+using Unity.Profiling;
 using UnityEngine;
 
 namespace Ouranos.Movement
@@ -38,6 +39,11 @@ namespace Ouranos.Movement
 
         // Spreads the first evaluation of each ship across the sample interval's fixed steps.
         static int nextPhase;
+
+        // Sibling scopes inside Movement.Avoidance (Issue #9); they never nest, so their sum is at most the parent.
+        static readonly ProfilerMarker NeighborQueryMarker = new ProfilerMarker("Avoidance.NeighborQuery");
+        static readonly ProfilerMarker NeighborScanMarker = new ProfilerMarker("Avoidance.NeighborScan");
+        static readonly ProfilerMarker SideClearanceMarker = new ProfilerMarker("Avoidance.SideClearance");
 
         [Tooltip("Layers holding ship collision proxies.")]
         public LayerMask NeighborLayers;
@@ -144,8 +150,10 @@ namespace Ouranos.Movement
         void Evaluate(SteeringTarget normalTarget, ShipMovementProfile profile)
         {
             ShipMovementState self = motor.State;
-            int count = Physics.OverlapSphereNonAlloc(ShipMovementState.ToWorld(self.Position), profile.NeighborSearchRadius,
-                neighbors, NeighborLayers, QueryTriggerInteraction.Ignore);
+            int count;
+            using (NeighborQueryMarker.Auto())
+                count = Physics.OverlapSphereNonAlloc(ShipMovementState.ToWorld(self.Position), profile.NeighborSearchRadius,
+                    neighbors, NeighborLayers, QueryTriggerInteraction.Ignore);
             Overflowed = count == neighbors.Length;
             if (Overflowed) OverflowCount++;
 
@@ -157,31 +165,34 @@ namespace Ouranos.Movement
             Vector2 heldSelf = default, heldOther = default;
             NeighborsExamined = 0;
 
-            for (int i = 0; i < count; i++)
+            using (NeighborScanMarker.Auto())
             {
-                Collider candidate = neighbors[i];
-                if (System.Array.IndexOf(ownColliders, candidate) >= 0) continue;
-                if (!candidate.TryGetComponent(out ShipMovement other) || other == movement) continue;
-                if (other.Profile == null || other.Motor == null || other.Motor.State.Speed <= MovingSpeed) continue;
+                for (int i = 0; i < count; i++)
+                {
+                    Collider candidate = neighbors[i];
+                    if (System.Array.IndexOf(ownColliders, candidate) >= 0) continue;
+                    if (!candidate.TryGetComponent(out ShipMovement other) || other == movement) continue;
+                    if (other.Profile == null || other.Motor == null || other.Motor.State.Speed <= MovingSpeed) continue;
 
-                NeighborsExamined++;
-                bool imminent = Predict(self, profile, other, out float time, out float distance, out Vector2 selfAt, out Vector2 otherAt);
-                if (holding && other == decision.Threat)
-                {
-                    heldSeen = true;
-                    heldImminent = imminent;
-                    heldTime = imminent ? time : float.PositiveInfinity;
-                    heldDistance = distance;
-                    heldSelf = selfAt;
-                    heldOther = otherAt;
-                }
-                if (imminent && time < earliestTime)
-                {
-                    earliest = other;
-                    earliestTime = time;
-                    earliestDistance = distance;
-                    earliestSelf = selfAt;
-                    earliestOther = otherAt;
+                    NeighborsExamined++;
+                    bool imminent = Predict(self, profile, other, out float time, out float distance, out Vector2 selfAt, out Vector2 otherAt);
+                    if (holding && other == decision.Threat)
+                    {
+                        heldSeen = true;
+                        heldImminent = imminent;
+                        heldTime = imminent ? time : float.PositiveInfinity;
+                        heldDistance = distance;
+                        heldSelf = selfAt;
+                        heldOther = otherAt;
+                    }
+                    if (imminent && time < earliestTime)
+                    {
+                        earliest = other;
+                        earliestTime = time;
+                        earliestDistance = distance;
+                        earliestSelf = selfAt;
+                        earliestOther = otherAt;
+                    }
                 }
             }
 
@@ -271,6 +282,8 @@ namespace Ouranos.Movement
 
             decision.Active = true;
             decision.Threat = threat;
+            // Readout only, on acquire or replace; Object.name allocates, so it is never read per step.
+            ThreatName = threat.name;
             holding = true;
             Recovering = false;
             separatingTimer = 0f;
@@ -303,6 +316,7 @@ namespace Ouranos.Movement
             Recovering = true;
             recoveryTimer = 0f;
             decision.Threat = null;
+            ThreatName = "";
             decision.TimeToNearestApproach = 0f;
         }
 
@@ -332,9 +346,12 @@ namespace Ouranos.Movement
 
         bool SideIsClear(Vector2 position, SteeringTarget normalTarget, AvoidanceSide side, ShipMovementProfile profile)
         {
-            Vector2 point = normalTarget.Point + RouteRight() * ((int)side * profile.AvoidanceOffset);
-            return guard.HasClearance(position, point, profile.FootprintRadius + profile.CollisionSkin)
-                && planner.IsNavigable(position, point);
+            using (SideClearanceMarker.Auto())
+            {
+                Vector2 point = normalTarget.Point + RouteRight() * ((int)side * profile.AvoidanceOffset);
+                return guard.HasClearance(position, point, profile.FootprintRadius + profile.CollisionSkin)
+                    && planner.IsNavigable(position, point);
+            }
         }
 
         // Starboard unit vector of the route direction (heading 0 = +Z, clockwise).
@@ -343,6 +360,7 @@ namespace Ouranos.Movement
         void ClearDecision()
         {
             decision = default;
+            ThreatName = "";
             holding = false;
             braking = false;
             Recovering = false;
@@ -353,7 +371,6 @@ namespace Ouranos.Movement
         void UpdateReadout()
         {
             Active = decision.Active;
-            ThreatName = decision.Threat != null ? decision.Threat.name : "";
             TimeToNearestApproach = decision.TimeToNearestApproach;
             ClosestApproach = decision.ClosestDistance;
             Side = decision.Side;
