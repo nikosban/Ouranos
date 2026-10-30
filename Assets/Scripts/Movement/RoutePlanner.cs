@@ -20,6 +20,7 @@ namespace Ouranos.Movement
 
         Vector2 requestedDestination;
         NavMeshPath path;
+        int? agentTypeId;
 
         void Awake() => path = new NavMeshPath();
 
@@ -47,7 +48,7 @@ namespace Ouranos.Movement
         {
             if (Status != RouteStatus.Pending) return;
 
-            var filter = new NavMeshQueryFilter { agentTypeID = FindAgentTypeId(), areaMask = NavMesh.AllAreas };
+            NavMeshQueryFilter filter = Filter();
             Vector3 start = transform.position;
             Vector3 end = ShipMovementState.ToWorld(requestedDestination);
 
@@ -69,6 +70,24 @@ namespace Ouranos.Movement
 
             Route = new Route(path.corners.Select(ShipMovementState.ToPlanar));
             Status = RouteStatus.Ready;
+        }
+
+        /// <summary>
+        /// Query only: true if a straight line between two planar points stays on the NavMesh for this agent type.
+        /// The start is snapped onto the NavMesh first, since ships may ride inside the baked margin.
+        /// </summary>
+        public bool IsNavigable(Vector2 from, Vector2 to)
+        {
+            NavMeshQueryFilter filter = Filter();
+            if (!NavMesh.SamplePosition(ShipMovementState.ToWorld(from), out NavMeshHit start, SampleDistance, filter))
+                return false;
+            return !NavMesh.Raycast(start.position, ShipMovementState.ToWorld(to), out _, filter);
+        }
+
+        NavMeshQueryFilter Filter()
+        {
+            agentTypeId ??= FindAgentTypeId();
+            return new NavMeshQueryFilter { agentTypeID = agentTypeId.Value, areaMask = NavMesh.AllAreas };
         }
 
         void Fail(string reason)

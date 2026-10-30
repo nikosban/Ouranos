@@ -20,3 +20,11 @@ MonoBehaviour:
   ArrivalRadius: 2
   CollisionSkin: 0.05
   LookAheadDistance: 6
+  PredictionHorizon: 4
+  NeighborSearchRadius: 60
+  NeighborSampleInterval: 0.1
+  SafetyMargin: 1
+  AvoidanceOffset: 4
+  ThreatReleaseDelay: 0.5
+  AvoidanceRecoveryTime: 2
+  NeighborBufferCapacity: 16

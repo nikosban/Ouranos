@@ -30,8 +30,8 @@ namespace Ouranos.Movement
             state.Heading = transform.eulerAngles.y;
         }
 
-        /// <summary>Turns toward the target and integrates speed; with no target, brakes.</summary>
-        public MotionProposal ProposeMotion(SteeringTarget? target, ShipMovementProfile profile, float deltaTime)
+        /// <summary>Turns toward the target and integrates speed; with no target, brakes. Desired speed never exceeds speedCap.</summary>
+        public MotionProposal ProposeMotion(SteeringTarget? target, ShipMovementProfile profile, float deltaTime, float speedCap = float.MaxValue)
         {
             float heading = state.Heading;
             float desiredSpeed = 0f;
@@ -47,7 +47,8 @@ namespace Ouranos.Movement
                     float headingError = Mathf.Abs(Mathf.DeltaAngle(heading, desiredHeading));
                     desiredSpeed = Mathf.Min(profile.MaxSpeed,
                         ArrivalSpeedCap(target.Value.RemainingDistance, profile),
-                        TurnSpeedCap(headingError, distance, profile));
+                        TurnSpeedCap(headingError, distance, profile),
+                        speedCap);
                 }
             }
 

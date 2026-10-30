@@ -4,10 +4,10 @@ namespace Ouranos.Movement
 {
     /// <summary>
     /// Runs one ship's movement step in a fixed order:
-    /// route refresh → look-ahead steering → motor proposal → collision guard → motor commit.
+    /// route refresh → look-ahead steering → moving-ship avoidance → motor proposal → collision guard → motor commit.
     /// </summary>
     [RequireComponent(typeof(MovementOrders), typeof(RoutePlanner), typeof(ShipMotor))]
-    [RequireComponent(typeof(CollisionGuard), typeof(CapsuleCollider))]
+    [RequireComponent(typeof(CollisionGuard), typeof(CapsuleCollider), typeof(MovingShipAvoidance))]
     public class ShipMovement : MonoBehaviour
     {
         public ShipMovementProfile Profile;
@@ -16,6 +16,7 @@ namespace Ouranos.Movement
         public MovementOrders Orders { get; private set; }
         public RoutePlanner Planner { get; private set; }
         public ShipMotor Motor { get; private set; }
+        public MovingShipAvoidance Avoidance { get; private set; }
 
         CollisionGuard guard;
 
@@ -25,6 +26,7 @@ namespace Ouranos.Movement
             Planner = GetComponent<RoutePlanner>();
             Motor = GetComponent<ShipMotor>();
             guard = GetComponent<CollisionGuard>();
+            Avoidance = GetComponent<MovingShipAvoidance>();
             SyncFootprint();
         }
 
@@ -58,7 +60,17 @@ namespace Ouranos.Movement
                 }
             }
 
-            MotionProposal proposal = Motor.ProposeMotion(LastTarget, Profile, deltaTime);
+            // Avoidance only adjusts the target point or caps speed; RemainingDistance stays the route's.
+            SteeringTarget? steered = LastTarget;
+            float speedCap = float.MaxValue;
+            AvoidanceDecision avoidance = Avoidance.Step(LastTarget, Profile, deltaTime);
+            if (avoidance.Active && steered.HasValue)
+            {
+                steered = new SteeringTarget { Point = avoidance.SteeringPoint, RemainingDistance = steered.Value.RemainingDistance };
+                speedCap = avoidance.SpeedCap;
+            }
+
+            MotionProposal proposal = Motor.ProposeMotion(steered, Profile, deltaTime, speedCap);
             PermittedMotion permitted = guard.ConstrainMotion(Motor.State.Position, proposal.Displacement, Profile.FootprintRadius, Profile.CollisionSkin);
             Motor.CommitMotion(proposal, permitted, deltaTime);
         }
