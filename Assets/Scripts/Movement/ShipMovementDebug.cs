@@ -2,7 +2,10 @@ using UnityEngine;
 
 namespace Ouranos.Movement
 {
-    /// <summary>Gizmos for route corners, progress, the look-ahead target and the collision footprint.</summary>
+    /// <summary>
+    /// Gizmos for route corners, progress, the look-ahead target, the collision footprint and moving-ship
+    /// avoidance (temporary target magenta, threat line and predicted closest-approach positions orange).
+    /// </summary>
     [RequireComponent(typeof(ShipMovement))]
     public class ShipMovementDebug : MonoBehaviour
     {
@@ -39,6 +42,24 @@ namespace Ouranos.Movement
                 Gizmos.color = Color.yellow;
                 Gizmos.DrawLine(transform.position, target);
                 Gizmos.DrawSphere(target, 0.5f);
+            }
+
+            AvoidanceDecision avoidance = movement.Avoidance != null ? movement.Avoidance.Decision : default;
+            if (avoidance.Active)
+            {
+                Vector3 temporary = ShipMovementState.ToWorld(avoidance.SteeringPoint);
+                Gizmos.color = Color.magenta;
+                Gizmos.DrawLine(transform.position, temporary);
+                Gizmos.DrawSphere(temporary, 0.6f);
+
+                Gizmos.color = new Color(1f, 0.5f, 0f);
+                if (avoidance.Threat != null)
+                    Gizmos.DrawLine(transform.position, avoidance.Threat.transform.position);
+                Vector3 selfAt = ShipMovementState.ToWorld(avoidance.PredictedSelfPosition);
+                Vector3 threatAt = ShipMovementState.ToWorld(avoidance.PredictedThreatPosition);
+                Gizmos.DrawWireSphere(selfAt, 0.5f);
+                Gizmos.DrawWireSphere(threatAt, 0.5f);
+                Gizmos.DrawLine(selfAt, threatAt);
             }
         }
 

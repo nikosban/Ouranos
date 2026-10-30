@@ -4,7 +4,7 @@
 
 - Unity 6000.6.4f1, URP 17.6.0, Input System 1.20.0.
 - Unity AI Navigation `com.unity.ai.navigation` 2.0.16.
-- One gameplay system: single-ship 2.5D movement with physical blocking (Issue #1).
+- One gameplay system: 2.5D ship movement with physical blocking (Issue #1) and predictive avoidance between moving ships (Issue #3).
 
 ## Decisions
 
@@ -16,53 +16,65 @@ From the Issue #1 decision log:
 - DECIDED: The movement system is built in independently verifiable vertical slices, starting with single-ship movement and blocking.
 - DECIDED: Acceptance for movement slices is an in-game scenario with recorded metrics, not automated PlayMode tests (Issue #1 review).
 
+From the Issue #3 decision log:
+
+- DECIDED: Predictive moving-ship avoidance is a temporary steering/speed adjustment before ShipMotor, while CollisionGuard remains the final blocking authority.
+- DECIDED: Avoidance begins with bounded local nearest-approach prediction, not a global multi-agent solver.
+
 ## Movement system (`Assets/Scripts/Movement/`)
 
 Each ship runs one fixed step (`ShipMovement`, 0.02 s fixed timestep):
-route refresh → look-ahead steering → motor proposal → collision guard → motor commit; the visual reads the result.
+route refresh → look-ahead steering → moving-ship avoidance → motor proposal → collision guard → motor commit; the visual reads the result.
 
 | Part | Responsibility |
 | --- | --- |
 | `MovementOrders` | The only order seam: `Move(destinationXZ)`, `Stop()`. A new order supersedes the old route. |
-| `RoutePlanner` / `Route` | NavMesh path request for agent type `Ship`, the retained corner polyline, and monotonic progress. Missing or partial routes log a warning and stop the ship. |
+| `RoutePlanner` / `Route` | NavMesh path request for agent type `Ship`, the retained corner polyline, and monotonic progress. Missing or partial routes log a warning and stop the ship. `IsNavigable(from, to)` is a query-only NavMesh raycast for the same agent type. |
 | `RouteRequestQueue` | Scene component; at most `MaxRequestsPerFrame` (2) synchronous path requests per rendered frame. |
 | `Steering` | Look-ahead target `LookAheadDistance` along the route, crossing corners; backs off toward the ship if the straight shortcut lacks clearance (capsule cast at footprint + skin against the `Obstacle` layer). |
-| `ShipMotor` | Authoritative XZ position, heading, forward speed. Turn ≤ `TurnRate·dt`; accel/decel limits; arrival cap `sqrt(2·Dec·max(0, remaining − ArrivalRadius))`; pure-pursuit turn-rate cap. Writes the pose to a kinematic Rigidbody. |
+| `MovingShipAvoidance` | Every `NeighborSampleInterval` (phases staggered across ships): bounded `OverlapSphereNonAlloc` on the `Ship` layer, skipping ships at ≤ 0.1 u/s; constant-velocity closest approach per neighbor; the earliest imminent conflict (`0 < t ≤ PredictionHorizon`, distance < both footprints + `SafetyMargin`) becomes the threat. Offsets the route target by `AvoidanceOffset` to the side away from the threat (exact head-on: starboard for both, provisional), opposite side only if the preferred one lacks static clearance or NavMesh; neither → speed cap 0. Holds threat and side until non-imminent for `ThreatReleaseDelay`; a strictly earlier threat from another ship replaces it. Resets when the route object changes (new order, stop, arrival). Never writes Transform, state, route or orders. Inspector readout: threat, time/distance of closest approach, side, temporary target, speed cap, guard blocked, overflow. |
+| `ShipMotor` | Authoritative XZ position, heading, forward speed. Turn ≤ `TurnRate·dt`; accel/decel limits; arrival cap `sqrt(2·Dec·max(0, remaining − ArrivalRadius))`; pure-pursuit turn-rate cap; optional `speedCap`. Writes the pose to a kinematic Rigidbody. |
 | `CollisionGuard` | Swept vertical-capsule query (footprint + skin) against `Ship` and `Obstacle` layers; returns permitted displacement and a blocked flag. Blocked motion keeps only the speed it actually moved. |
 | `ShipVisual` | Applies `VisualAltitudeOffset` to the `Visual` child only. |
-| `ShipMovementDebug` | Gizmos: footprint (green, red when blocked), route corners (cyan), progress point (white), look-ahead target (yellow). Visible in the Scene view and in the Game view with Gizmos on. |
+| `ShipMovementDebug` | Gizmos: footprint (green, red when blocked), route corners (cyan), progress point (white), look-ahead target (yellow), avoidance target (magenta), threat line and predicted closest-approach positions (orange). Visible in the Scene view and in the Game view with Gizmos on. |
 
-Arrival completes the order when the remaining route distance is ≤ `ArrivalRadius`.
+Arrival completes the order when the remaining route distance is ≤ `ArrivalRadius`. Avoidance keeps the route's remaining distance, so arrival is unaffected.
 
 ## Editable values
 
-- `Assets/Settings/Movement/DefaultShipProfile.asset`: MaxSpeed 8, Acceleration 2, Deceleration 3, TurnRate 90, FootprintRadius 2, ArrivalRadius 2, CollisionSkin 0.05, LookAheadDistance 6. Shared by every ship that references it; a different ship type needs its own profile. The ship's collider radius is synced from `FootprintRadius`.
-- `Assets/Prefabs/Ship.prefab` › `ShipVisual.VisualAltitudeOffset` (0).
+- `Assets/Settings/Movement/DefaultShipProfile.asset`: MaxSpeed 8, Acceleration 2, Deceleration 3, TurnRate 90, FootprintRadius 2, ArrivalRadius 2, CollisionSkin 0.05, LookAheadDistance 6; Avoidance: PredictionHorizon 4, NeighborSearchRadius 60, NeighborSampleInterval 0.1, SafetyMargin 1, AvoidanceOffset 8, ThreatReleaseDelay 0.5, NeighborBufferCapacity 16 (read at ship initialization; changing it in Play needs re-entering Play). Shared by every ship that references it; a different ship type needs its own profile. The ship's collider radius is synced from `FootprintRadius`.
+- `Assets/Prefabs/Ship.prefab` › `ShipVisual.VisualAltitudeOffset` (0); `MovingShipAvoidance.NeighborLayers` (`Ship`).
 - `MovementTest` scene › `Route Request Queue` › `MaxRequestsPerFrame` (2).
 - Project Settings › Navigation › agent type `Ship`: radius 2.5 (footprint 2 + 0.5 clearance, provisional), cell size 0.25. Changing it requires rebaking the `Navigation` NavMeshSurface.
 - Project Settings › Time › Fixed Timestep 0.02.
 - Layers: `Ship` (6), `Obstacle` (7). The floor stays on Default and is ignored by movement queries.
 
-All values are provisional.
+All values are provisional. The starboard head-on tie-break is a provisional prototype value, not a passing convention.
 
-## Test scene
+## Test scenes
 
 `Assets/Scenes/MovementTest.unity`: floor, static obstacle (radius 10 at origin), Ship A (-40, 0) facing +X, Ship B (30, 0) facing −X, baked `Navigation` NavMeshSurface (ships excluded), `Movement Acceptance Scenario`.
 
-Press Play: the scenario orders A to (15, 0), then to (40, 0), and shows PASS/FAIL per criterion in its Inspector fields, on screen, and as `[Acceptance]` log lines. Expected result: A stops against B (route around ships is out of scope).
+Press Play: the scenario orders A to (15, 0), then to (40, 0), and shows PASS/FAIL per criterion in its Inspector fields, on screen, and as `[Acceptance]` log lines. Expected result: A stops against B (route around ships is out of scope). B never moves, so avoidance stays inactive.
+
+`Assets/Scenes/AvoidanceTest.unity`: floor, Ship A (-30, 0) facing +X, Ship B (30, 0) facing −X, baked `Navigation` NavMeshSurface (ships excluded), `Head-On Avoidance Scenario`. Press Play: A is ordered to (30, 0) and B to (-30, 0); criteria (a)–(e) of Issue #3 show PASS/FAIL in the Inspector, on screen, and as `[Acceptance]` log lines. Last result: both arrive in about 10.9 s, min separation 5.92 u, first decision at 46 u, both pass starboard, no guard blocking.
 
 ## Known limitations and debt
 
 - Circular footprints approximate hulls; routes ignore turn radius.
 - One NavMesh agent type means one baked clearance; other ship radii need their own agent types and bakes.
-- Ships are not in the NavMesh; a ship blocked by another ship waits in place with no recovery.
+- Ships are not in the NavMesh; a ship blocked by a stopped ship waits in place with no recovery (avoidance ignores ships at ≤ 0.1 u/s).
+- Avoidance predicts at constant current velocity (no anticipated turns or acceleration) and handles one threat at a time. Only the head-on case is verified; crossing, near-parallel and multi-ship traffic are untested.
+- The neighbor buffer is bounded; when it fills, `Overflowed` is set, `OverflowCount` increments, and some neighbors may be missed. Hard blocking is the fallback.
+- If the held side loses static clearance mid-encounter, the ship brakes instead of switching sides.
+- Neighbor states may be up to one fixed step old, because ships' FixedUpdate order is undefined.
 - Look-ahead shortcuts are checked at footprint + skin, so ships can ride the exact collision clearance (12.05 u from the test obstacle) rather than the NavMesh's 0.5 u margin.
 - Forward-only thrust with capped turning is a reversible prototype assumption; final handling/strafe behavior is UNDECIDED (owner).
 - Pose writes teleport the kinematic body each step; no render interpolation.
 - Gizmos debug view exists only in the Editor.
-- Performance not measured.
+- Performance not measured, including avoidance query cost at scale.
 - `Assets/TutorialInfo/Icons/URP.png` is damaged in the working tree (not part of any change).
 
 ## Next
 
-Stage 2: predictive avoidance between moving ships (not started; needs a ticket).
+Not defined; needs a ticket. Deferred owner decisions: permanent passing/yield convention, final forward-only vs lateral-thrust handling, avoidance feel.

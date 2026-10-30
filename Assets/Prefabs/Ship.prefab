@@ -18,6 +18,7 @@ GameObject:
   - component: {fileID: 1685607903335123230}
   - component: {fileID: 5812023697930729934}
   - component: {fileID: 3592541830126404510}
+  - component: {fileID: 3838398871854849791}
   m_Layer: 6
   m_Name: Ship
   m_TagString: Untagged
@@ -186,6 +187,32 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Ouranos.Movement.ShipVisual
   Visual: {fileID: 6157418592594334933}
   VisualAltitudeOffset: 0
+--- !u!114 &3838398871854849791
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2121468841040336753}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5daa6fb0bb979804095ade341ec13644, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Ouranos.Movement.MovingShipAvoidance
+  NeighborLayers:
+    serializedVersion: 2
+    m_Bits: 64
+  Active: 0
+  ThreatName: 
+  TimeToNearestApproach: 0
+  ClosestApproach: 0
+  Side: 0
+  TemporaryTarget: {x: 0, y: 0}
+  SpeedCap: 0
+  GuardBlocked: 0
+  NeighborsExamined: 0
+  Overflowed: 0
+  OverflowCount: 0
 --- !u!1 &3272518840398282790
 GameObject:
   m_ObjectHideFlags: 0
