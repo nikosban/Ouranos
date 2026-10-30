@@ -26,4 +26,5 @@ MonoBehaviour:
   SafetyMargin: 1
   AvoidanceOffset: 8
   ThreatReleaseDelay: 0.5
+  AvoidanceRecoveryTime: 2
   NeighborBufferCapacity: 16

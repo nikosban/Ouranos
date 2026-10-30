@@ -49,8 +49,11 @@ namespace Ouranos.Movement
         [Tooltip("Lateral offset of the temporary steering target from the route target (u).")]
         [Min(0.1f)] public float AvoidanceOffset = 8f;
 
-        [Tooltip("Time a threat must stay non-imminent before avoidance releases it (s).")]
+        [Tooltip("Time a held threat must keep separating without danger before avoidance releases it before passing (s).")]
         [Min(0f)] public float ThreatReleaseDelay = 0.5f;
+
+        [Tooltip("Time over which the lateral offset ramps back to the route after the threat has passed (s).")]
+        [Min(0f)] public float AvoidanceRecoveryTime = 2f;
 
         [Tooltip("Size of the fixed neighbor query buffer. Read when a ship initializes; changing it in Play needs re-entering Play.")]
         [Min(1)] public int NeighborBufferCapacity = 16;
