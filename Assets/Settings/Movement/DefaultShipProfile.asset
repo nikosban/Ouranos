@@ -24,7 +24,7 @@ MonoBehaviour:
   NeighborSearchRadius: 60
   NeighborSampleInterval: 0.1
   SafetyMargin: 1
-  AvoidanceOffset: 8
+  AvoidanceOffset: 4
   ThreatReleaseDelay: 0.5
   AvoidanceRecoveryTime: 2
   NeighborBufferCapacity: 16

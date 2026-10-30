@@ -42,7 +42,7 @@ Arrival completes the order when the remaining route distance is ≤ `ArrivalRad
 
 ## Editable values
 
-- `Assets/Settings/Movement/DefaultShipProfile.asset`: MaxSpeed 8, Acceleration 2, Deceleration 3, TurnRate 90, FootprintRadius 2, ArrivalRadius 2, CollisionSkin 0.05, LookAheadDistance 6; Avoidance: PredictionHorizon 4, NeighborSearchRadius 60, NeighborSampleInterval 0.1, SafetyMargin 1, AvoidanceOffset 8, ThreatReleaseDelay 0.5, AvoidanceRecoveryTime 2, NeighborBufferCapacity 16 (read at ship initialization; changing it in Play needs re-entering Play). Shared by every ship that references it; a different ship type needs its own profile. The ship's collider radius is synced from `FootprintRadius`.
+- `Assets/Settings/Movement/DefaultShipProfile.asset`: MaxSpeed 8, Acceleration 2, Deceleration 3, TurnRate 90, FootprintRadius 2, ArrivalRadius 2, CollisionSkin 0.05, LookAheadDistance 6; Avoidance: PredictionHorizon 4, NeighborSearchRadius 60, NeighborSampleInterval 0.1, SafetyMargin 1, AvoidanceOffset 4, ThreatReleaseDelay 0.5, AvoidanceRecoveryTime 2, NeighborBufferCapacity 16 (read at ship initialization; changing it in Play needs re-entering Play). Shared by every ship that references it; a different ship type needs its own profile. The ship's collider radius is synced from `FootprintRadius`.
 - `Assets/Prefabs/Ship.prefab` › `ShipVisual.VisualAltitudeOffset` (0); `MovingShipAvoidance.NeighborLayers` (`Ship`).
 - `MovementTest` scene › `Route Request Queue` › `MaxRequestsPerFrame` (2).
 - Project Settings › Navigation › agent type `Ship`: radius 2.5 (footprint 2 + 0.5 clearance, provisional), cell size 0.25. Changing it requires rebaking the `Navigation` NavMeshSurface.
@@ -57,7 +57,7 @@ All values are provisional. The starboard head-on tie-break is a provisional pro
 
 Press Play: the scenario orders A to (15, 0), then to (40, 0), and shows PASS/FAIL per criterion in its Inspector fields, on screen, and as `[Acceptance]` log lines. Expected result: A stops against B (route around ships is out of scope). B never moves, so avoidance stays inactive.
 
-`Assets/Scenes/AvoidanceTest.unity`: floor, Ship A (-30, 0) facing +X, Ship B (30, 0) facing −X, baked `Navigation` NavMeshSurface (ships excluded), `Head-On Avoidance Scenario`. Press Play: A is ordered to (30, 0) and B to (-30, 0); criteria (a)–(e) of Issue #3 plus (f) coherent pass (per ship: 1 activation, 1 release, ≤ 0.5 u to the other side, ≤ 1 lateral reversal at 0.5 u hysteresis, ≤ 0.5 u lateral deviation at arrival) show PASS/FAIL in the Inspector, on screen, and as `[Acceptance]` log lines. Trails are logged as `[Trail]` lines every 0.5 s and drawn as gizmos (A cyan, B yellow). Last result: both arrive in 10.98 s at 2.01 u, min separation 15.5 u, first decision at 46 u, both pass starboard with 7.9 u peak deviation, one reversal each, 0.32 u lateral at arrival, no guard blocking.
+`Assets/Scenes/AvoidanceTest.unity`: floor, Ship A (-30, 0) facing +X, Ship B (30, 0) facing −X, baked `Navigation` NavMeshSurface (ships excluded), `Head-On Avoidance Scenario`. Press Play: A is ordered to (30, 0) and B to (-30, 0); criteria (a)–(e) of Issue #3 plus (f) coherent pass (per ship: 1 activation, 1 release, ≤ 0.5 u to the other side, ≤ 1 lateral reversal at 0.5 u hysteresis, ≤ 0.5 u lateral deviation at arrival) show PASS/FAIL in the Inspector, on screen, and as `[Acceptance]` log lines. Trails are logged as `[Trail]` lines every 0.5 s and drawn as gizmos (A cyan, B yellow). Last result (AvoidanceOffset 4): both arrive in 10.68 s at 1.97 u, min separation 7.8 u, first decision at 46 u, both pass starboard with 3.9 u peak deviation, one reversal each, 0.17 u lateral at arrival, no guard blocking. At AvoidanceOffset 8 the separation was 15.5 u.
 
 ## Known limitations and debt
 
@@ -67,8 +67,8 @@ Press Play: the scenario orders A to (15, 0), then to (40, 0), and shows PASS/FA
 - Avoidance predicts at constant current velocity (no anticipated turns or acceleration) and handles one threat at a time. Only the head-on case is verified; crossing, near-parallel and multi-ship traffic are untested.
 - The neighbor buffer is bounded; when it fills, `Overflowed` is set, `OverflowCount` increments, and some neighbors may be missed. Hard blocking is the fallback.
 - If the held side loses static clearance mid-encounter, the ship brakes instead of switching sides.
-- The corridor offset is a fixed `AvoidanceOffset`, not sized to the threat, so passes are wide (about 16 u apart in the head-on test).
-- Ships finish recovery with a small lateral residual (0.32 u in the head-on test); arrival distance there is 2.01 u against the 2.05 u criterion. A pass that ends near the destination can arrive further off the route.
+- The corridor offset is a fixed `AvoidanceOffset`, not sized to the threat. At 4 u the head-on pass keeps 7.8 u between centers; the final clearance is an owner feel choice.
+- Ships finish recovery with a small lateral residual (0.17 u in the head-on test). A pass that ends near the destination can arrive further off the route.
 - Neighbor states may be up to one fixed step old, because ships' FixedUpdate order is undefined.
 - Look-ahead shortcuts are checked at footprint + skin, so ships can ride the exact collision clearance (12.05 u from the test obstacle) rather than the NavMesh's 0.5 u margin.
 - Forward-only thrust with capped turning is a reversible prototype assumption; final handling/strafe behavior is UNDECIDED (owner).
