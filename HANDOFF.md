@@ -7,6 +7,7 @@
 - One gameplay system: 2.5D ship movement with physical blocking (Issue #1), predictive avoidance between moving ships (Issue #3), and Group Move by translated destinations (Issue #5).
 - Movement performance profiled at 10/50/100 ships with a dedicated benchmark scene and profiler markers (Issue #7); one measured allocation removed.
 - Avoidance cost sub-attributed with three submarkers, and the per-step threat-name readout allocation removed (Issue #9).
+- Player control: single-ship mouse selection, right-click Move and S Stop through the existing order seam, with a placeholder selection ring (Issue #11).
 
 ## Decisions
 
@@ -41,6 +42,13 @@ From the Issue #9 decision log:
 - DECIDED: Avoidance performance refinement removes confirmed debug-readout allocations and profiles existing hot paths before changing behavior. — Measured local fixes beat speculative algorithms and added per-step work.
 - DECIDED: Dense ship traffic, passing and deadlock recovery remain separate gameplay decisions, not performance fixes. — Profiling must not determine how fleets are allowed to move.
 
+From the Issue #11 decision log:
+
+- DECIDED: Player picking and input live in `Selection`/`Interaction`, never in `ShipMovement`. — Keeps simulation independent of local player controls.
+- DECIDED: Input bindings for Task 6 are local serialized `InputAction` fields on `PlayerCommands`; the shared `InputSystem_Actions` template is not modified. — One consumer exists.
+- DECIDED: Scripted input is confined to acceptance verification and drives the real bindings through virtual devices. — No second command path.
+- DECIDED: The scripted 0.1 u destination check is authoritative; the manual 1.0 u marker-radius check is supplementary and reported separately.
+
 ## Movement system (`Assets/Scripts/Movement/`)
 
 Each ship runs one fixed step (`ShipMovement`, 0.02 s fixed timestep):
@@ -66,6 +74,15 @@ Arrival completes the order when the remaining route distance is ≤ `ArrivalRad
 
 Inside `Movement.Avoidance` (Issue #9), three sibling markers that never nest: `Avoidance.NeighborQuery` (the `OverlapSphereNonAlloc` call), `Avoidance.NeighborScan` (the candidate loop with `Predict`), `Avoidance.SideClearance` (`SideIsClear`: `CollisionGuard.HasClearance` + `RoutePlanner.IsNavigable`). The rest of `Movement.Avoidance` (route direction, threat hold/adopt/release, `ApplySide`, readout) is reported as "Avoidance exclusive" = parent − the three children. `MovementPerformanceScenario` reports each child's step-frame median/p95/max and share of `Movement.Avoidance`, and its call count. Marker overhead was not measurable (see Last result).
 
+## Player control (`Assets/Scripts/Selection/`, `Assets/Scripts/Interaction/`)
+
+| Part | Responsibility |
+| --- | --- |
+| `ShipSelection` | Scene component; the only owner of the selected set (0–1 ships). `IReadOnlyList<ShipMovement> Selected`, `SetSingle(ship)` (ignores null, destroyed, inactive or disabled ships; re-selecting is a no-op), `Clear()`. Never touches orders. |
+| `PlayerCommands` | Local player input → selection and orders. Requires explicit `Camera` and `Selection` references; if either is missing it logs an error and disables itself. `Select` (LMB): raycast on `ShipLayers`; a selectable `ShipMovement` → `SetSingle`, anything else → `Clear`. `Command` (RMB): with a selectable selected ship, raycast on `GroundLayers` → `Orders.Move(hit XZ)`; a ground miss logs and issues nothing. `Stop` (S): `Orders.Stop()` on selected ships. The pointer position comes from the device that pressed the button. Changing selection never changes orders. |
+| `SelectionIndicator` | Provisional placeholder: a `LineRenderer` ring on its own object around the selected ship (`FootprintRadius + RadiusMargin`), hidden when nothing valid is selected. Reads selection only; ship and collision proxy untouched. |
+| `PlayerControlScenario` | Acceptance only (see Test scenes). |
+
 ## Editable values
 
 - `Assets/Settings/Movement/DefaultShipProfile.asset`: MaxSpeed 8, Acceleration 2, Deceleration 3, TurnRate 90, FootprintRadius 2, ArrivalRadius 2, CollisionSkin 0.05, LookAheadDistance 6; Avoidance: PredictionHorizon 4, NeighborSearchRadius 60, NeighborSampleInterval 0.1, SafetyMargin 1, AvoidanceOffset 4, ThreatReleaseDelay 0.5, AvoidanceRecoveryTime 2, NeighborBufferCapacity 16 (read at ship initialization; changing it in Play needs re-entering Play). Shared by every ship that references it; a different ship type needs its own profile. The ship's collider radius is synced from `FootprintRadius`.
@@ -74,6 +91,8 @@ Inside `Movement.Avoidance` (Issue #9), three sibling markers that never nest: `
 - Project Settings › Navigation › agent type `Ship`: radius 2.5 (footprint 2 + 0.5 clearance, provisional), cell size 0.25. Changing it requires rebaking the `Navigation` NavMeshSurface.
 - Project Settings › Time › Fixed Timestep 0.02.
 - Layers: `Ship` (6), `Obstacle` (7). The floor stays on Default and is ignored by movement queries.
+- `PlayerControlTest` scene › `Player Control` › `PlayerCommands`: `ShipLayers` (`Ship`), `GroundLayers` (`Default`), bindings `Select` `<Mouse>/leftButton`, `Command` `<Mouse>/rightButton`, `Stop` `<Keyboard>/s` (all provisional). Any scene using player control needs its own `Player Control` object wired the same way.
+- `Player Control` › `Selection Indicator` › `SelectionIndicator` (provisional placeholder): Color (0.9, 0.9, 0.9, 1), LineWidth 0.3 u (0.05–2), RadiusMargin 1 u (0–10), Height 0.2 u (0.05–5), Segments 48 (12–128). Material `Assets/Settings/Selection/SelectionIndicator.mat` (URP Particles/Unlit, white; vertex colour comes from `Color`).
 - `MovementPerformanceTest` scene › `Movement Performance Scenario` (benchmark configuration, not gameplay): Count 100 (1–200), Seed 1, Run 1, WestAnchor (−150, 0), EastAnchor (150, 0), LaneOffset 60 u, Columns 5, Spacing 10 u, Jitter 1 u, CommandInterval 50 s, TargetFrameRate 60, Warmup 10 s, Duration 30 s, TrackSeparation off; criteria MinActiveFraction 0.7, MovingSpeed 0.1 u/s, SustainedBlock 2 s, EngagementDistance 16 u, MinShipDistance 4 u, MinObstacleDistance 12 u. Player command-line overrides: `-perfCount N`, `-perfRun K`, `-perfLane L`, `-perfValidate`, `-perfQuit`.
 
 All values are provisional. The starboard head-on tie-break is a provisional prototype value, not a passing convention.
@@ -87,6 +106,8 @@ Press Play: the scenario orders A to (15, 0), then to (40, 0), and shows PASS/FA
 `Assets/Scenes/AvoidanceTest.unity`: floor, Ship A (-30, 0) facing +X, Ship B (30, 0) facing −X, baked `Navigation` NavMeshSurface (ships excluded), `Head-On Avoidance Scenario`. Press Play: A is ordered to (30, 0) and B to (-30, 0); criteria (a)–(e) of Issue #3 plus (f) coherent pass (per ship: 1 activation, 1 release, ≤ 0.5 u to the other side, ≤ 1 lateral reversal at 0.5 u hysteresis, ≤ 0.5 u lateral deviation at arrival) show PASS/FAIL in the Inspector, on screen, and as `[Acceptance]` log lines. Trails are logged as `[Trail]` lines every 0.5 s and drawn as gizmos (A cyan, B yellow). Last result (AvoidanceOffset 4): both arrive in 10.68 s at 1.97 u, min separation 7.8 u, first decision at 46 u, both pass starboard with 3.9 u peak deviation, one reversal each, 0.17 u lateral at arrival, no guard blocking. At AvoidanceOffset 8 the separation was 15.5 u.
 
 `Assets/Scenes/GroupMoveTest.unity`: the `MovementTest` layout (floor, radius-10 obstacle at origin, baked `Navigation` NavMeshSurface, `Route Request Queue`) with Ship A (-38, -18), B (-31, 4), C (-21, 14), all facing +X, and `Group Move Scenario`. Press Play: one group move to anchor (30, 0); criteria (1) command (3 orders, assigned destinations and centroid within 0.01 u), (2) independent arrival per ship, (3) ship–ship ≥ 4 u and obstacle-center ≥ 12 u, (4) no order replaced show PASS/FAIL in the Inspector, on screen, and as `[Acceptance]` log lines; an unexpected Stop counts as that ship's failure. Assigned destinations are drawn as magenta gizmos. Last result: assigned (22, -18), (29, 4), (39, 14) exactly; arrivals A 10.56 s, B 10.86 s, C 10.58 s, each 1.92 u from its target; min ship–ship 11.1 u (B–C), min obstacle B 12.05 u.
+
+`Assets/Scenes/PlayerControlTest.unity`: the `GroupMoveTest` layout without the obstacle (120 × 120 u floor, own baked `Navigation` NavMeshSurface, `Route Request Queue`, top-down ortho camera), Ship A (−30, −10) and Ship B (−30, 15) facing +X, orange marker discs (radius 1 u, no collider, `PlayerControlTest/Marker.mat`) at marker 1 (20, −10) and marker 2 (20, 15), and `Player Control` (`ShipSelection`, `PlayerCommands`, `PlayerControlScenario`, child `Selection Indicator`). Press Play and follow the on-screen prompts: left-click A, right-click marker 1, right-click marker 2 while A moves, press S while A moves, left-click empty ground. Criteria (1) select = {A}, (2) Move to marker 1, (3) replaced by Move to marker 2 while moving (> 0.1 u/s), (4) Stop while moving and ≤ 0.1 u/s within 4 s, (5) selection cleared with A's order unchanged, (6) Ship B never has an order; expected destinations come from the marker transforms. An unexpected order to A fails the current step. Results show in the Inspector, on screen and as `[Acceptance]` lines with the mode and tolerance. `ScriptedInput` (default off; verification builds only) drives the same steps through a virtual mouse and keyboard at 0.1 u tolerance (authoritative); manual runs use 1.0 u (supplementary). Last result (scripted, Windows Development Player): all PASS, destination error 0.0000 u for both markers, replace issued at 2.04 u/s, stop issued at 5.04 u/s and reached ≤ 0.1 u/s after 1.66 s, B 0 orders. Manual run: not yet recorded.
 
 `Assets/Scenes/MovementPerformanceTest.unity`: 400 × 400 u floor, radius-10 obstacles at (0, 0), (0, 60), (0, −60), its own baked `Navigation` NavMeshSurface (ships excluded), `Route Request Queue`, top-down camera, `Movement Performance Scenario`. Press Play, or run a Development Player with `-profiler-enable -profiler-log-file <file>.raw -perfCount N -perfQuit`. Count ships spawn in two 5-column grids (10 u pitch, seeded jitter): West centered at (−150, 60) facing +X, East at (150, −60) facing −X; one group move per side to the opposite end, re-commanded every 50 s. After a 10 s warmup a 30 s capture records the workload (active/moving %, routes, avoidance activations, neighbor overflow, blocking and sustained blockers, obstacle engagement) and per-frame `ProfilerRecorder` values (main thread minus `WaitForTargetFPS`, `Movement.*` markers, physics, GC), split into steady frames and the route-request burst; results appear as `[Perf]` log lines and on screen after capture. `-perfValidate` adds the O(n²) separation check (not for timed runs).
 
@@ -123,8 +144,13 @@ Last result (Issue #9; Windows Development Player, Ryzen 5 7600X / RTX 4070 SUPE
 - At 50 and 100 ships the 16-slot neighbor buffer overflows on nearly every avoidance evaluation in the benchmark, so some neighbors are missed; hard blocking is the fallback.
 - Dense head-on traffic deadlocks: opposing 5-column streams on one line, or lanes overlapping (`LaneOffset` ≤ 50 u), leave ships blocked for 20 s or more at every Count, because a ship blocked by a stopped ship has no recovery. This is movement-behavior debt, separate from performance. The benchmark avoids it with 60 u lanes, so it measures same-lane encounters, not head-on ones.
 - Route-request latency follows the 2-per-frame budget: a 100-ship command needs 49 rendered frames (about 0.7 s at 60 fps after startup) until the last route is ready.
+- The selection ring is placeholder art; final indicator appearance is UNDECIDED (owner).
+- A destroyed or deactivated selected ship stays in the selection until the next select or clear; commands skip it and the ring hides.
+- Right-clicking over a ship or obstacle orders the ground point beneath (ground mask only); there is no attack/follow or UI-over-pointer blocking.
+- The unused project-wide template `InputSystem_Actions` (`Player/Move`) also binds `S`; revisit when shared controls are introduced.
+- Scripted input events are only processed while the player window has focus (`runInBackground` off).
 - `Assets/TutorialInfo/Icons/URP.png` is damaged in the working tree (not part of any change).
 
 ## Next
 
-Not defined; needs a ticket. Candidate from Issue #9: a measured review of `Avoidance.NeighborScan` (per-candidate `Array.IndexOf` over own colliders, `TryGetComponent`, Unity object comparisons, `Predict`); nothing in it is attributed below the loop yet. Deferred owner decisions: target hardware, frame-rate budget and supported fleet size; selection UX, formation layouts and persistent formation behavior, permanent passing/yield convention, final forward-only vs lateral-thrust handling, avoidance feel.
+Not defined; needs a ticket. Issue #11 names later users of `Selection`: group selection and camera follow (Tasks 8/9). Candidate from Issue #9: a measured review of `Avoidance.NeighborScan` (per-candidate `Array.IndexOf` over own colliders, `TryGetComponent`, Unity object comparisons, `Predict`); nothing in it is attributed below the loop yet. Deferred owner decisions: target hardware, frame-rate budget and supported fleet size; selection indicator art, multi/box selection UX, formation layouts and persistent formation behavior, permanent passing/yield convention, final forward-only vs lateral-thrust handling, avoidance feel.
