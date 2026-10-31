@@ -1,12 +1,14 @@
+using System.Collections.Generic;
 using Ouranos.Movement;
 using UnityEngine;
 
 namespace Ouranos.Selection
 {
     /// <summary>
-    /// Provisional placeholder: a flat ring around the selected ship, drawn by a LineRenderer on this object.
-    /// Reads <see cref="ShipSelection"/> only; never writes the selection and never touches the ship.
-    /// Final indicator art is an owner decision.
+    /// Provisional placeholder: a flat ring around every selected ship. This object's LineRenderer draws the first ring
+    /// and is the single configuration source; further rings are runtime child objects carrying only a LineRenderer with
+    /// the same material and settings. Reads <see cref="ShipSelection"/> only; never writes the selection and never
+    /// touches the ships. Final indicator art is an owner decision.
     /// </summary>
     [RequireComponent(typeof(LineRenderer))]
     public class SelectionIndicator : MonoBehaviour
@@ -24,27 +26,52 @@ namespace Ouranos.Selection
         [Tooltip("Number of line segments in the ring.")]
         [Range(12, 128)] public int Segments = 48;
 
-        LineRenderer line;
+        readonly List<LineRenderer> rings = new List<LineRenderer>();
 
         void Awake()
         {
-            line = GetComponent<LineRenderer>();
+            LineRenderer line = GetComponent<LineRenderer>();
             line.useWorldSpace = true;
             line.loop = true;
             line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             line.receiveShadows = false;
             line.enabled = false;
+            rings.Add(line);
         }
 
         void LateUpdate()
         {
-            ShipMovement ship = Selection != null && Selection.Selected.Count > 0 ? Selection.Selected[0] : null;
-            if (!ShipSelection.IsSelectable(ship))
-            {
-                line.enabled = false;
-                return;
-            }
+            int used = 0;
+            if (Selection != null)
+                foreach (ShipMovement ship in Selection.Selected)
+                    if (ShipSelection.IsSelectable(ship))
+                        Draw(Ring(used++), ship);
+            for (int i = used; i < rings.Count; i++)
+                rings[i].enabled = false;
+        }
 
+        LineRenderer Ring(int index)
+        {
+            if (index < rings.Count) return rings[index];
+            LineRenderer source = rings[0];
+            var ring = new GameObject($"Ring {index}").AddComponent<LineRenderer>();
+            ring.transform.SetParent(transform, false);
+            ring.sharedMaterial = source.sharedMaterial;
+            ring.useWorldSpace = true;
+            ring.loop = true;
+            ring.shadowCastingMode = source.shadowCastingMode;
+            ring.receiveShadows = false;
+            ring.alignment = source.alignment;
+            ring.textureMode = source.textureMode;
+            ring.numCapVertices = source.numCapVertices;
+            ring.numCornerVertices = source.numCornerVertices;
+            ring.enabled = false;
+            rings.Add(ring);
+            return ring;
+        }
+
+        void Draw(LineRenderer line, ShipMovement ship)
+        {
             float radius = (ship.Profile != null ? ship.Profile.FootprintRadius : 0f) + RadiusMargin;
             Vector2 center = ship.Motor.State.Position;
             line.startColor = line.endColor = Color;

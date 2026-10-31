@@ -217,7 +217,7 @@ namespace Ouranos.Interaction
             while (ShipA.Motor.State.Speed < 2f) yield return null;
             yield return Click(MouseButton.Right, Marker2.position);
             yield return new WaitForSeconds(1.5f);
-            yield return Press(Key.S);
+            yield return Press(Key.C);
             while (step == Step.Stop) yield return null;
             yield return Click(MouseButton.Left, ShipMovementState.ToWorld(ScriptedEmptyPoint));
         }
@@ -251,7 +251,7 @@ namespace Ouranos.Interaction
                 Step.Select => "1. Left-click Ship A",
                 Step.Move => "2. Right-click marker 1",
                 Step.Replace => "3. While A moves, right-click marker 2",
-                Step.Stop => "4. While A moves, press S",
+                Step.Stop => "4. While A moves, press C",
                 _ => "5. Left-click empty ground",
             };
             GUI.Label(new Rect(10f, 10f, 1200f, 60f),
