@@ -41,11 +41,15 @@ namespace Ouranos.Movement
 
         void OnValidate() => SyncFootprint();
 
-        // The collision proxy radius always comes from the profile.
+        // The collision proxy always comes from the profile: a capsule along the local Z (heading) axis.
         void SyncFootprint()
         {
             if (Profile != null && TryGetComponent(out CapsuleCollider proxy))
+            {
                 proxy.radius = Profile.FootprintRadius;
+                proxy.height = Profile.FootprintHalfLength * 2f;
+                proxy.direction = 2;
+            }
         }
 
         void FixedUpdate()
@@ -93,7 +97,17 @@ namespace Ouranos.Movement
                 proposal = Motor.ProposeMotion(steered, Profile, deltaTime, speedCap);
             PermittedMotion permitted;
             using (GuardMarker.Auto())
-                permitted = guard.ConstrainMotion(Motor.State.Position, proposal.Displacement, Profile.FootprintRadius, Profile.CollisionSkin);
+            {
+                // A refused turn keeps the previous heading; translation stays forward along it (Issue #24, owner Q1).
+                ShipMovementState state = Motor.State;
+                bool turnAllowed = guard.ConstrainTurn(state.Position, state.Heading, proposal.Heading,
+                    Profile.FootprintRadius, Profile.FootprintHalfSegment, Profile.CollisionSkin);
+                if (!turnAllowed)
+                    proposal = ShipMotor.AlongHeading(proposal, state.Heading, deltaTime);
+                permitted = guard.ConstrainMotion(state.Position, proposal.Heading, proposal.Displacement,
+                    Profile.FootprintRadius, Profile.FootprintHalfSegment, Profile.CollisionSkin);
+                permitted.TurnBlocked = !turnAllowed;
+            }
             using (MotorCommitMarker.Auto())
                 Motor.CommitMotion(proposal, permitted, deltaTime);
         }

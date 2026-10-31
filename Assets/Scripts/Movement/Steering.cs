@@ -25,7 +25,7 @@ namespace Ouranos.Movement
 
             float clearanceRadius = profile.FootprintRadius + profile.CollisionSkin;
             Vector2 point = route.PointAt(route.Progress + reach);
-            for (int i = BackOffSamples - 1; i >= 1 && !clearance.HasClearance(state.Position, point, clearanceRadius); i--)
+            for (int i = BackOffSamples - 1; i >= 1 && !clearance.HasClearance(state.Position, point, clearanceRadius, profile.FootprintHalfSegment); i--)
                 point = route.PointAt(route.Progress + reach * i / BackOffSamples);
 
             return new SteeringTarget { Point = point, RemainingDistance = route.RemainingDistance };

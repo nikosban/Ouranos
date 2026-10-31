@@ -529,6 +529,7 @@ MonoBehaviour:
   EastAnchor: {x: 150, y: 0}
   Columns: 5
   Spacing: 10
+  ColumnSpacing: 20
   Jitter: 1
   CommandInterval: 50
   Warmup: 10

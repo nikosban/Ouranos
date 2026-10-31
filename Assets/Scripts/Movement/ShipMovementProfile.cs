@@ -21,8 +21,11 @@ namespace Ouranos.Movement
         [Tooltip("Maximum heading change (degrees/s).")]
         [Min(0.01f)] public float TurnRate = 90f;
 
-        [Tooltip("Radius of the circular planar collision footprint (u).")]
-        [Min(0.01f)] public float FootprintRadius = 2f;
+        [Tooltip("Radius of the planar capsule footprint: half its width (u).")]
+        [Min(0.01f)] public float FootprintRadius = 2.5f;
+
+        [Tooltip("Total length of the planar capsule footprint along the heading, end caps included (u). At most 2 × radius gives a circle.")]
+        [Min(0.02f)] public float FootprintLength = 15f;
 
         [Tooltip("Remaining route distance at which a move order counts as arrived (u).")]
         [Min(0f)] public float ArrivalRadius = 2f;
@@ -57,5 +60,11 @@ namespace Ouranos.Movement
 
         [Tooltip("Size of the fixed neighbor query buffer. Read when a ship initializes; changing it in Play needs re-entering Play.")]
         [Min(1)] public int NeighborBufferCapacity = 16;
+
+        /// <summary>Half length of the footprint's center segment, aligned to the heading (u).</summary>
+        public float FootprintHalfSegment => Mathf.Max(0f, FootprintLength * 0.5f - FootprintRadius);
+
+        /// <summary>Distance from the ship center to the bow or stern tip of the footprint (u).</summary>
+        public float FootprintHalfLength => FootprintRadius + FootprintHalfSegment;
     }
 }

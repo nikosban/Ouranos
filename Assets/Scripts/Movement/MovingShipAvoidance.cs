@@ -208,9 +208,9 @@ namespace Ouranos.Movement
 
                 ShipMovementState other = held.Motor.State;
                 Vector2 r = other.Position - self.Position;
-                if (Vector2.Dot(r, routeDirection) <= -(profile.FootprintRadius + held.Profile.FootprintRadius))
+                if (Vector2.Dot(r, routeDirection) <= -(profile.FootprintHalfLength + held.Profile.FootprintHalfLength))
                 {
-                    // Passed: the threat is behind along the route by at least both footprints.
+                    // Passed: the threat is behind along the route by at least both footprint half lengths.
                     BeginRecovery(profile);
                     return;
                 }
@@ -247,7 +247,8 @@ namespace Ouranos.Movement
             }
         }
 
-        // Constant-current-velocity nearest approach (Issue #3 formula). True when the conflict is imminent.
+        // Constant-current-velocity nearest approach of the centers (Issue #3 formula). At that time the two capsule
+        // center segments, at their current headings, are compared (Issue #24). True when the conflict is imminent.
         static bool Predict(ShipMovementState self, ShipMovementProfile profile, ShipMovement other,
             out float time, out float distance, out Vector2 selfAt, out Vector2 otherAt)
         {
@@ -267,10 +268,32 @@ namespace Ouranos.Movement
             time = Mathf.Clamp(-Vector2.Dot(r, v) / vv, 0f, profile.PredictionHorizon);
             if (time <= 0f) return false;
 
-            distance = (r + v * time).magnitude;
             selfAt = self.Position + selfVelocity * time;
             otherAt = state.Position + otherVelocity * time;
+            Vector2 selfAxis = self.Forward * profile.FootprintHalfSegment;
+            Vector2 otherAxis = state.Forward * other.Profile.FootprintHalfSegment;
+            distance = SegmentDistance(selfAt - selfAxis, selfAt + selfAxis, otherAt - otherAxis, otherAt + otherAxis);
             return distance < profile.FootprintRadius + other.Profile.FootprintRadius + profile.SafetyMargin;
+        }
+
+        // Closest distance between two planar segments: zero if they cross, otherwise the nearest endpoint-to-segment distance.
+        static float SegmentDistance(Vector2 a0, Vector2 a1, Vector2 b0, Vector2 b1)
+        {
+            Vector2 a = a1 - a0, b = b1 - b0;
+            float d0 = Cross(b, a0 - b0), d1 = Cross(b, a1 - b0), d2 = Cross(a, b0 - a0), d3 = Cross(a, b1 - a0);
+            if (d0 * d1 < 0f && d2 * d3 < 0f) return 0f;
+            return Mathf.Min(Mathf.Min(PointToSegment(a0, b0, b1), PointToSegment(a1, b0, b1)),
+                Mathf.Min(PointToSegment(b0, a0, a1), PointToSegment(b1, a0, a1)));
+        }
+
+        static float Cross(Vector2 u, Vector2 w) => u.x * w.y - u.y * w.x;
+
+        static float PointToSegment(Vector2 p, Vector2 s0, Vector2 s1)
+        {
+            Vector2 s = s1 - s0;
+            float lengthSquared = Vector2.Dot(s, s);
+            float t = lengthSquared < 1e-12f ? 0f : Mathf.Clamp01(Vector2.Dot(p - s0, s) / lengthSquared);
+            return Vector2.Distance(p, s0 + s * t);
         }
 
         void Adopt(ShipMovement threat, Vector2 position, SteeringTarget normalTarget, ShipMovementProfile profile, Vector2 selfAt, Vector2 otherAt)
@@ -349,7 +372,7 @@ namespace Ouranos.Movement
             using (SideClearanceMarker.Auto())
             {
                 Vector2 point = normalTarget.Point + RouteRight() * ((int)side * profile.AvoidanceOffset);
-                return guard.HasClearance(position, point, profile.FootprintRadius + profile.CollisionSkin)
+                return guard.HasClearance(position, point, profile.FootprintRadius + profile.CollisionSkin, profile.FootprintHalfSegment)
                     && planner.IsNavigable(position, point);
             }
         }

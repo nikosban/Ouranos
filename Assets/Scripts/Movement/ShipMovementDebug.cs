@@ -3,13 +3,13 @@ using UnityEngine;
 namespace Ouranos.Movement
 {
     /// <summary>
-    /// Gizmos for route corners, progress, the look-ahead target, the collision footprint and moving-ship
+    /// Gizmos for route corners, progress, the look-ahead target, the capsule collision footprint and moving-ship
     /// avoidance (temporary target magenta, threat line and predicted closest-approach positions orange).
     /// </summary>
     [RequireComponent(typeof(ShipMovement))]
     public class ShipMovementDebug : MonoBehaviour
     {
-        const int CircleSegments = 48;
+        const int ArcSegments = 24;
 
         void OnDrawGizmos()
         {
@@ -18,7 +18,9 @@ namespace Ouranos.Movement
 
             bool blocked = Application.isPlaying && movement.Motor != null && movement.Motor.Blocked;
             Gizmos.color = blocked ? Color.red : Color.green;
-            DrawCircle(transform.position, movement.Profile.FootprintRadius);
+            float heading = Application.isPlaying && movement.Motor != null ? movement.Motor.State.Heading : transform.eulerAngles.y;
+            DrawCapsule(transform.position, ShipMovementState.HeadingToDirection(heading),
+                movement.Profile.FootprintRadius, movement.Profile.FootprintHalfSegment);
 
             if (!Application.isPlaying || movement.Planner == null) return;
 
@@ -63,13 +65,27 @@ namespace Ouranos.Movement
             }
         }
 
-        static void DrawCircle(Vector3 center, float radius)
+        // Planar capsule outline: two half circles joined by the side lines, aligned to the heading.
+        static void DrawCapsule(Vector3 center, Vector2 forward, float radius, float halfSegment)
         {
-            Vector3 previous = center + new Vector3(radius, 0f, 0f);
-            for (int i = 1; i <= CircleSegments; i++)
+            Vector3 axis = ShipMovementState.ToWorld(forward);
+            Vector3 side = new Vector3(axis.z, 0f, -axis.x);
+            Vector3 front = center + axis * halfSegment;
+            Vector3 back = center - axis * halfSegment;
+            Gizmos.DrawLine(front + side * radius, back + side * radius);
+            Gizmos.DrawLine(front - side * radius, back - side * radius);
+            DrawHalfCircle(front, axis, side, radius);
+            DrawHalfCircle(back, -axis, -side, radius);
+        }
+
+        // Half circle from +side through the outward direction to −side.
+        static void DrawHalfCircle(Vector3 center, Vector3 outward, Vector3 side, float radius)
+        {
+            Vector3 previous = center + side * radius;
+            for (int i = 1; i <= ArcSegments; i++)
             {
-                float angle = i * Mathf.PI * 2f / CircleSegments;
-                Vector3 next = center + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                float angle = i * Mathf.PI / ArcSegments;
+                Vector3 next = center + (side * Mathf.Cos(angle) + outward * Mathf.Sin(angle)) * radius;
                 Gizmos.DrawLine(previous, next);
                 previous = next;
             }
