@@ -7,8 +7,8 @@ namespace Ouranos.Selection
     /// <summary>
     /// Provisional placeholder: a flat ring around every selected ship. This object's LineRenderer draws the first ring
     /// and is the single configuration source; further rings are runtime child objects carrying only a LineRenderer with
-    /// the same material and settings. Reads <see cref="ShipSelection"/> only; never writes the selection and never
-    /// touches the ships. Final indicator art is an owner decision.
+    /// the same material and settings (<see cref="RingLines"/>). Reads <see cref="ShipSelection"/> only; never writes the
+    /// selection and never touches the ships. Final indicator art is an owner decision.
     /// </summary>
     [RequireComponent(typeof(LineRenderer))]
     public class SelectionIndicator : MonoBehaviour
@@ -31,11 +31,7 @@ namespace Ouranos.Selection
         void Awake()
         {
             LineRenderer line = GetComponent<LineRenderer>();
-            line.useWorldSpace = true;
-            line.loop = true;
-            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            line.receiveShadows = false;
-            line.enabled = false;
+            RingLines.Prepare(line);
             rings.Add(line);
         }
 
@@ -45,44 +41,19 @@ namespace Ouranos.Selection
             if (Selection != null)
                 foreach (ShipMovement ship in Selection.Selected)
                     if (ShipSelection.IsSelectable(ship))
-                        Draw(Ring(used++), ship);
+                    {
+                        float radius = (ship.Profile != null ? ship.Profile.FootprintRadius : 0f) + RadiusMargin;
+                        RingLines.Draw(Ring(used++), ship.Motor.State.Position, radius, Height, Segments, Color, LineWidth);
+                    }
             for (int i = used; i < rings.Count; i++)
                 rings[i].enabled = false;
         }
 
         LineRenderer Ring(int index)
         {
-            if (index < rings.Count) return rings[index];
-            LineRenderer source = rings[0];
-            var ring = new GameObject($"Ring {index}").AddComponent<LineRenderer>();
-            ring.transform.SetParent(transform, false);
-            ring.sharedMaterial = source.sharedMaterial;
-            ring.useWorldSpace = true;
-            ring.loop = true;
-            ring.shadowCastingMode = source.shadowCastingMode;
-            ring.receiveShadows = false;
-            ring.alignment = source.alignment;
-            ring.textureMode = source.textureMode;
-            ring.numCapVertices = source.numCapVertices;
-            ring.numCornerVertices = source.numCornerVertices;
-            ring.enabled = false;
-            rings.Add(ring);
-            return ring;
-        }
-
-        void Draw(LineRenderer line, ShipMovement ship)
-        {
-            float radius = (ship.Profile != null ? ship.Profile.FootprintRadius : 0f) + RadiusMargin;
-            Vector2 center = ship.Motor.State.Position;
-            line.startColor = line.endColor = Color;
-            line.startWidth = line.endWidth = LineWidth;
-            line.positionCount = Segments;
-            for (int i = 0; i < Segments; i++)
-            {
-                float angle = i * 2f * Mathf.PI / Segments;
-                line.SetPosition(i, new Vector3(center.x + radius * Mathf.Cos(angle), Height, center.y + radius * Mathf.Sin(angle)));
-            }
-            line.enabled = true;
+            if (index == rings.Count)
+                rings.Add(RingLines.CreateLike(rings[0], transform, $"Ring {index}"));
+            return rings[index];
         }
     }
 }
