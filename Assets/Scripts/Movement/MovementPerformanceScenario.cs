@@ -40,8 +40,10 @@ namespace Ouranos.Movement
         [Range(0f, 100f)] public float LaneOffset = 60f;
         [Tooltip("Grid columns per group, along X.")]
         [Range(1, 10)] public int Columns = 5;
-        [Tooltip("Grid pitch between ship centers (u).")]
+        [Tooltip("Grid pitch between ship centers across rows, along Z (u).")]
         [Range(5f, 20f)] public float Spacing = 10f;
+        [Tooltip("Grid pitch between ship centers across columns, along X and the ships' heading (u). Must exceed the footprint length.")]
+        [Range(5f, 40f)] public float ColumnSpacing = 20f;
         [Tooltip("Maximum seeded placement jitter per axis (u).")]
         [Range(0f, 2f)] public float Jitter = 1f;
         [Tooltip("Time between group commands; the groups swap sides each time (s).")]
@@ -196,7 +198,7 @@ namespace Ouranos.Movement
             for (int i = 0; i < obstacleCount; i++) minObstacleDistance[i] = float.PositiveInfinity;
 
             Debug.Log($"[Perf] config Count {Count} spawned {n} (West {west.Count}, East {east.Count}) Run {Run} Seed {Seed} " +
-                      $"Warmup {Warmup} s Duration {Duration} s CommandInterval {CommandInterval} s Spacing {Spacing} u Columns {Columns} " +
+                      $"Warmup {Warmup} s Duration {Duration} s CommandInterval {CommandInterval} s Spacing {Spacing} u ColumnSpacing {ColumnSpacing} u Columns {Columns} " +
                       $"Jitter {Jitter} u LaneOffset {LaneOffset} u TargetFrameRate {TargetFrameRate} TrackSeparation {TrackSeparation}");
             LogEnvironment();
 
@@ -220,7 +222,7 @@ namespace Ouranos.Movement
             int rows = Mathf.CeilToInt(n / (float)Columns);
             for (int k = 0; k < n; k++)
             {
-                float x = (k % Columns - (Columns - 1) * 0.5f) * Spacing * side;
+                float x = (k % Columns - (Columns - 1) * 0.5f) * ColumnSpacing * side;
                 float z = (k / Columns - (rows - 1) * 0.5f) * Spacing;
                 var jitter = new Vector2((float)(random.NextDouble() * 2.0 - 1.0), (float)(random.NextDouble() * 2.0 - 1.0)) * Jitter;
                 Vector2 position = anchor + new Vector2(x, z) + jitter;

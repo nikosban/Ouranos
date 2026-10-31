@@ -18,6 +18,8 @@ namespace Ouranos.Movement
     {
         public ShipMovementState State => state;
         public bool Blocked { get; private set; }
+        /// <summary>True when the last step's proposed turn was refused by the collision guard.</summary>
+        public bool TurnBlocked { get; private set; }
 
         ShipMovementState state;
         Rigidbody body;
@@ -63,10 +65,22 @@ namespace Ouranos.Movement
             };
         }
 
+        /// <summary>The same proposal at another heading: speed kept, displacement recomputed forward along that heading.</summary>
+        public static MotionProposal AlongHeading(MotionProposal proposal, float heading, float deltaTime)
+        {
+            return new MotionProposal
+            {
+                Heading = heading,
+                Speed = proposal.Speed,
+                Displacement = ShipMovementState.HeadingToDirection(heading) * proposal.Speed * deltaTime,
+            };
+        }
+
         /// <summary>Applies the permitted displacement. A blocked ship keeps only the speed it could actually move.</summary>
         public void CommitMotion(MotionProposal proposal, PermittedMotion permitted, float deltaTime)
         {
             Blocked = permitted.Blocked;
+            TurnBlocked = permitted.TurnBlocked;
             state.Heading = proposal.Heading;
             state.Position += permitted.Displacement;
             state.Speed = permitted.Blocked ? permitted.Displacement.magnitude / deltaTime : proposal.Speed;
