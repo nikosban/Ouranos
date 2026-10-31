@@ -453,6 +453,7 @@ MonoBehaviour:
   GroundLayers:
     serializedVersion: 2
     m_Bits: 1
+  DragThreshold: 5
   Select:
     m_Name: Select
     m_Type: 1
@@ -499,11 +500,29 @@ MonoBehaviour:
     m_SingletonActionBindings:
     - m_Name: 
       m_Id: 31e3dc48-cf25-4c57-b237-693c8a6a716e
-      m_Path: <Keyboard>/s
+      m_Path: <Keyboard>/c
       m_Interactions: 
       m_Processors: 
       m_Groups: 
       m_Action: Stop
+      m_Flags: 0
+    m_Flags: 0
+    m_Priority: 0
+  AddModifier:
+    m_Name: AddModifier
+    m_Type: 1
+    m_ExpectedControlType: 
+    m_Id: e9721df7-531f-46e1-bcea-aa5165c76c09
+    m_Processors: 
+    m_Interactions: 
+    m_SingletonActionBindings:
+    - m_Name: 
+      m_Id: a07c7b1b-e1df-4cd1-8e6d-d235cf668840
+      m_Path: <Keyboard>/shift
+      m_Interactions: 
+      m_Processors: 
+      m_Groups: 
+      m_Action: AddModifier
       m_Flags: 0
     m_Flags: 0
     m_Priority: 0
